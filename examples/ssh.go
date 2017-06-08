@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"github.com/anthony-piddubny/cli"
 )
 
 const (
@@ -38,7 +39,12 @@ func handleError(e error, fatal bool, customMessage ...string) {
 	}
 }
 
+
 func main() {
+
+	ss := cli.NewSession()
+	fmt.Println(ss)
+
 	sshConfig := &ssh.ClientConfig{
 		User: USER,
 		Auth: []ssh.AuthMethod{
@@ -81,34 +87,73 @@ func main() {
 
 	// start commands there
 
+	buf := make([]byte, 1000)
+	bufferStr := ""
+	excpectedStr := "#sadad"
 
+	//tick := time.Tick(100 * time.Millisecond)
+	timeout := time.After(5 * time.Second)
 	if _, err := writeBuff("enable", sshIn); err != nil {
 		handleError(err, true, "Failed to run: %s")
 	}
+	for {
+		select {
+		case <-timeout:
+			fmt.Println("Timeout Error!")
+			return
 
-	waitingString := ""
-	buf := make([]byte, 1000)
-	time.Sleep(time.Second * 5)
-	n, err := sshOut.Read(buf) //this reads the ssh terminal
+		default:
+			fmt.Println("    .")
 
-	fmt.Println("read ", n, " Bytes")
+			fmt.Println("Start reading bytes....")
+			n, err := sshOut.Read(buf) //this reads the ssh terminal
+			if err != nil {
+				if err != io.EOF {
+					log.Printf("Read error: %s", err)
+				}
+				break
+			}
+			fmt.Println("Finish reading bytes....")
 
-	waitingString += string(buf)
-	handleError(err, true, "failed to read from terminal: %s")
-	fmt.Println("read: ", waitingString)
+			fmt.Println("read ", n, " Bytes")
+			bufferStr += string(buf)
+			fmt.Println("REsult ", bufferStr, " '\n")
 
-	//readBuff("#", sshOut, 20)
+			if strings.Contains(bufferStr, excpectedStr) {
+				fmt.Println("GOT RESPONSE !!!!", bufferStr)
+				return
+			}
+			// clear buffer !!s
+			buf = make([]byte, 1000)
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
 
 
-	//if _, err := writeBuff(ENABLE_PASSWORD, sshIn); err != nil {
+
+
+
+
+
+
+	// WORKING
+	//if _, err := writeBuff("enable", sshIn); err != nil {
 	//	handleError(err, true, "Failed to run: %s")
 	//}
-	//readBuff("#", sshOut, 2)
-
-	//if _, err := writeBuff("help", sshIn); err != nil {
-	//	handleError(err, true, "Failed to run: %s")
-	//}
-	//readBuff("#", sshOut, 2)
+	//
+	//waitingString := ""
+	//buf := make([]byte, 1000)
+	//time.Sleep(time.Second * 5)
+	//
+	//
+	//n, err := sshOut.Read(buf) //this reads the ssh terminal
+	//
+	//fmt.Println("read ", n, " Bytes")
+	//
+	//waitingString += string(buf)
+	//handleError(err, true, "failed to read from terminal: %s")
+	//fmt.Println("read: ", waitingString)
+	// END WORKING
 
 	session.Close()
 }
