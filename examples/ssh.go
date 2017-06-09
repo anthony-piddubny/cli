@@ -103,6 +103,8 @@ func readBuf(sshOut io.Reader, reSrt string, c chan string){
     for {
         fmt.Println("    .")
         //fmt.Println("Start reading bytes....")
+	// sshOut.Read <- this will stuck if there is now any data in the buffer, as a result gorutine will not be deleted, this is a memory leak
+	// need to find some command like sshOut.Read(buf, timeout)
         n, _ := sshOut.Read(buf) //this reads the ssh terminal
         //fmt.Println("Finish reading bytes....")
 
