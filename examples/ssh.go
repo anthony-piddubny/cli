@@ -7,7 +7,6 @@ import (
 	"log"
 	"strings"
 	"time"
-	"github.com/anthony-piddubny/cli"
 )
 
 const (
@@ -41,16 +40,16 @@ func handleError(e error, fatal bool, customMessage ...string) {
 
 
 func main() {
-
-	ss := cli.NewSession()
-	fmt.Println(ss)
-
+	now := time.Now()
+	fmt.Println(now)
 	sshConfig := &ssh.ClientConfig{
 		User: USER,
 		Auth: []ssh.AuthMethod{
 			ssh.Password(PASSWORD),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+//		Timeout: time.Duration(time.Second * 0,00000001),
+// timeout for the wjole tcp connection?? ----- not what we neeed
 	}
 	sshConfig.Config.Ciphers = append(sshConfig.Config.Ciphers, "3des-cbc")
 	modes := ssh.TerminalModes{
@@ -63,8 +62,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to dial: %s", err)
 	}
-
 	session, err := connection.NewSession()
+//	session.SetReadDeadline(now)
 	handleError(err, true, "Failed to create session: %s")
 	sshOut, err := session.StdoutPipe()
 	handleError(err, true, "Unable to setup stdin for session: %v")
@@ -83,77 +82,68 @@ func main() {
 		handleError(err, true, "request for shell failed: %s")
 	}
 
-
-
 	// start commands there
+	sendCommand(sshIn, sshOut, "terminal length 0", "#")
+	sendCommand(sshIn, sshOut, "no logging console", "#")
 
-	buf := make([]byte, 1000)
+    r1 := sendCommand(sshIn, sshOut, "enable", "#")
+    r2 := sendCommand(sshIn, sshOut, "show run", "#")
+
+    fmt.Println("Response 1: ", r1)
+    fmt.Println("Response 2: ", r2)
+
+	session.Close()
+}
+
+
+func readBuf(sshOut io.Reader, reSrt string, c chan string){
+    buf := make([]byte, 1000)
 	bufferStr := ""
-	excpectedStr := "#sadad"
 
-	//tick := time.Tick(100 * time.Millisecond)
-	timeout := time.After(5 * time.Second)
-	if _, err := writeBuff("enable", sshIn); err != nil {
+    for {
+        fmt.Println("    .")
+        //fmt.Println("Start reading bytes....")
+        n, _ := sshOut.Read(buf) //this reads the ssh terminal
+        //fmt.Println("Finish reading bytes....")
+
+        fmt.Println("read ", n, " Bytes")
+        bufferStr += string(buf)
+        //fmt.Println("REsult ", bufferStr, " '\n")
+
+        if strings.Contains(bufferStr, reSrt) {
+            //fmt.Println("Got response, send it to the channel", bufferStr)
+            c <-bufferStr
+            return
+        }
+        buf = make([]byte, 1000)  // clear buffer
+        time.Sleep(500 * time.Millisecond)
+    }
+}
+
+
+
+func sendCommand(sshIn io.WriteCloser, sshOut io.Reader, command string, reSrt string) (string){
+    timeout := time.After(5 * time.Second)
+    ch := make(chan string)
+
+	if _, err := writeBuff(command, sshIn); err != nil {
 		handleError(err, true, "Failed to run: %s")
 	}
+    go readBuf(sshOut, reSrt, ch)
+
 	for {
 		select {
 		case <-timeout:
 			fmt.Println("Timeout Error!")
-			return
-
+			return "time out error"
+        case response:= <-ch:
+            //fmt.Println("Timeout Error!")
+            //fmt.Println("GOT resosnse!")
+            //fmt.Println("START>>>\n", response, "\n<<<END")
+			return response
 		default:
-			fmt.Println("    .")
-
-			fmt.Println("Start reading bytes....")
-			n, err := sshOut.Read(buf) //this reads the ssh terminal
-			if err != nil {
-				if err != io.EOF {
-					log.Printf("Read error: %s", err)
-				}
-				break
-			}
-			fmt.Println("Finish reading bytes....")
-
-			fmt.Println("read ", n, " Bytes")
-			bufferStr += string(buf)
-			fmt.Println("REsult ", bufferStr, " '\n")
-
-			if strings.Contains(bufferStr, excpectedStr) {
-				fmt.Println("GOT RESPONSE !!!!", bufferStr)
-				return
-			}
-			// clear buffer !!s
-			buf = make([]byte, 1000)
-			time.Sleep(50 * time.Millisecond)
+            fmt.Println("do nothing ....")
+            time.Sleep(50 * time.Millisecond)
 		}
 	}
-
-
-
-
-
-
-
-
-	// WORKING
-	//if _, err := writeBuff("enable", sshIn); err != nil {
-	//	handleError(err, true, "Failed to run: %s")
-	//}
-	//
-	//waitingString := ""
-	//buf := make([]byte, 1000)
-	//time.Sleep(time.Second * 5)
-	//
-	//
-	//n, err := sshOut.Read(buf) //this reads the ssh terminal
-	//
-	//fmt.Println("read ", n, " Bytes")
-	//
-	//waitingString += string(buf)
-	//handleError(err, true, "failed to read from terminal: %s")
-	//fmt.Println("read: ", waitingString)
-	// END WORKING
-
-	session.Close()
 }
